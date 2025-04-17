@@ -2,13 +2,6 @@ from tkinter import *
 from tkinter import Frame, Label, Button ,messagebox
 from PIL import Image, ImageTk
 import mysql.connector
-import requests
-import geocoder
-import speech_recognition as sr
-import threading
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import cv2
 import os
@@ -18,59 +11,10 @@ tk.geometry("1200x700+150+50")
 tk.title("SMS")
 tk.configure(bg="white")
 
-
+photo_filename = None
 # db conn
 def connect_db():
     return mysql.connector.connect(host="localhost", user="root", password="root", database="mca_2025",ssl_disabled=True)
-
-# Function to send email using Elastic Email SMTP
-def send_email_with_smtp(user_name, to_email, location):
-    smtp_server = "smtp.elasticemail.com"
-    smtp_port = 587
-    smtp_user = "goraisumit01@gmail.com"  # Replace with your Elastic Email SMTP user
-    smtp_password = "4BD3D244F4105452E8B5EFB82B884B244EFE"  # Replace with your Elastic Email SMTP API key
-
-    subject = "🚨 Emergency Alert 🚨"
-    body = f"🚨 Help needed! User '{user_name}' is in trouble at: {location}"
-
-    msg = MIMEMultipart()
-    msg['From'] = smtp_user
-    msg['To'] = to_email
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, "plain", "utf-8"))
-
-    try:
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_password)
-            server.sendmail(smtp_user, to_email, msg.as_string())
-            print("Email sent successfully")
-    except Exception as e:
-        print(f"Failed to send email: {e}")
-
-# Voice Listener
-def voice_listener(user_name, emergency_email):
-    recognizer = sr.Recognizer()
-    with sr.Microphone() as source:
-        print("Listening for 'help' or 'logout'...")
-        while True:
-            try:
-                audio = recognizer.listen(source, timeout=5)
-                text = recognizer.recognize_google(audio).lower()
-                print(f"Recognized: {text}")
-                if "help" in text:
-                    location = geocoder.ip('me').address
-                    print(f"user email : {user_name} \n emer_email : {emergency_email}")
-                    send_email_with_smtp(user_name, emergency_email, location)
-                    print("Emergency email sent!")
-                elif "logout" in text:
-                    print("Voice command: Logout")
-                    messagebox.showinfo("Logout", "Logging out via voice command.")
-                    break
-            except sr.WaitTimeoutError:
-                continue
-            except Exception as e:
-                print(f"Voice recognition error: {e}")
 
 # Function to log out
 def logout():
@@ -94,54 +38,98 @@ def view_profile_window(email):
 
     profile_win = Toplevel()
     profile_win.title("View Profile")
-    profile_win.geometry("400x300")
-
+    profile_win.geometry("500x650+500+50")
+    photo_path = user[7]
     Label(profile_win, text="User Profile", font=("Arial", 18, "bold")).pack(pady=10)
-
-    Label(profile_win, text=f"Name: {user[0]}", font=("Arial", 14)).pack(pady=5)
-    Label(profile_win, text=f"Email: {user[1]}", font=("Arial", 14)).pack(pady=5)
-    Label(profile_win, text=f"Mobile: {user[2]}", font=("Arial", 14)).pack(pady=5)
-
-    Button(profile_win, text="Close", font=("Arial", 12), command=profile_win.destroy).pack(pady=20)
-
+        
+    Label(profile_win, text=f"Name: {user[1]}", font=("Arial", 14)).pack(pady=5)
+    Label(profile_win, text=f"Email: {user[2]}", font=("Arial", 14)).pack(pady=5)
+    Label(profile_win, text=f"Mobile: {user[3]}", font=("Arial", 14)).pack(pady=5)    
+    Label(profile_win, text=f"Emergency Mobile: {user[5]}", font=("Arial", 14)).pack(pady=5)
+    Label(profile_win, text=f"Emergency Email: {user[6]}", font=("Arial", 14)).pack(pady=5)
+    Label(profile_win, text=f"Photo: {photo_path}", font=("Arial", 14)).pack(pady=5)
     
-
-# Function to update user profile
+    img = Image.open("./"+photo_path)  
+    img = img.resize((400, 250), Image.LANCZOS)
+    img = ImageTk.PhotoImage(img)
+    img_label = Label(profile_win, image=img)
+    img_label.image = img  
+    img_label.pack(pady=10)
+    Button(profile_win, text="Close", font=("Arial", 12), command=profile_win.destroy).pack(pady=20)
+    
 def update_profile(email):
     new_name = entry_new_name.get()
     new_mobile = entry_new_mobile.get()
-    
+    new_emergency_mobile = entry_new_em_mobile.get()
+    new_emergency_email = entry_new_em_email.get()
+    #new_photo_path = entry_photo_path.get()
+
+    if not (new_name and new_mobile and new_emergency_mobile and new_emergency_email):
+        messagebox.showwarning("Input Error", "Please fill in all fields")
+        return
+
     conn = connect_db()
     cursor = conn.cursor()
-    cursor.execute("UPDATE safety_users SET name=%s, mobile=%s WHERE email=%s", (new_name, new_mobile, email))
+    cursor.execute("""
+        UPDATE safety_users 
+        SET name=%s, mobile=%s, emer_mobile=%s, emer_email=%s
+        WHERE email=%s
+    """, (new_name, new_mobile, new_emergency_mobile, new_emergency_email, email))
     conn.commit()
     conn.close()
     messagebox.showinfo("Success", "Profile updated successfully")
+    update_win.destroy()
 
 def update_profile_window(email):
-    global update_win, entry_new_name,entry_new_mobile
-        
-    update_win = Toplevel()
-    update_win.geometry("500x400+500+100")
-    update_win.title("Update")
-    update_win.resizable(False, False)
-    
-    Label(update_win, text="Update Profile", font=("Arial", 20, "bold")).grid(row=0, column=0, columnspan=2, pady=50)
-        
-    Label(update_win, text="Name:", font=("Arial", 18)).grid(row=1, column=0, padx=10, pady=5, sticky=E)
-    entry_new_name = Entry(update_win, font=("Arial", 18), width=25)
-    entry_new_name.grid(row=1, column=1, padx=10, pady=5)
-        
-    Label(update_win, text="Mobile No.:", font=("Arial", 18)).grid(row=2, column=0, padx=10, pady=5, sticky=E)
-    entry_new_mobile = Entry(update_win, font=("Arial", 18), width=25, show="*")
-    entry_new_mobile.grid(row=2, column=1, padx=10, pady=5)
-    
-    Button(update_win, text="Update", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", 
-           padx=10, pady=5, command=lambda:update_profile(email)).grid(row=3, column=1,padx=20, pady=5,sticky=S)
-    
-    Button(update_win, text="Cancel", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", 
-           padx=10, pady=5, command=update_win.destroy).grid(row=3, column=1,sticky=E )
+    global update_win, entry_new_name, entry_new_mobile, entry_new_em_mobile, entry_new_em_email
 
+    user = fetch_user_details(email)
+    if not user:
+        messagebox.showerror("Error", "User not found")
+        return
+
+    update_win = Toplevel()
+    update_win.title("Update Profile")
+    update_win.geometry("600x650+500+50")
+    update_win.resizable(False, False)
+
+    # Using grid() instead of pack() for layout
+    Label(update_win, text="Update Profile", font=("Arial", 20, "bold")).grid(row=0, column=0, columnspan=2, pady=20)
+
+    Label(update_win, text="Name:", font=("Arial", 14)).grid(row=1, column=0, padx=10, pady=5, sticky=E)
+    entry_new_name = Entry(update_win, font=("Arial", 14), width=30)
+    entry_new_name.insert(0, str(user[1] or ""))
+    entry_new_name.grid(row=1, column=1, padx=10, pady=5)
+
+    Label(update_win, text="Mobile No.:", font=("Arial", 14)).grid(row=2, column=0, padx=10, pady=5, sticky=E)
+    entry_new_mobile = Entry(update_win, font=("Arial", 14), width=30)
+    entry_new_mobile.insert(0, str(user[3] or ""))
+    entry_new_mobile.grid(row=2, column=1, padx=10, pady=5)
+
+    Label(update_win, text="Emergency Mobile:", font=("Arial", 14)).grid(row=3, column=0, padx=10, pady=5, sticky=E)
+    entry_new_em_mobile = Entry(update_win, font=("Arial", 14), width=30)
+    entry_new_em_mobile.insert(0, str(user[5] or ""))
+    entry_new_em_mobile.grid(row=3, column=1, padx=10, pady=5)
+
+    Label(update_win, text="Emergency Email:", font=("Arial", 14)).grid(row=4, column=0, padx=10, pady=5, sticky=E)
+    entry_new_em_email = Entry(update_win, font=("Arial", 14), width=30)
+    entry_new_em_email.insert(0, str(user[6] or ""))
+    entry_new_em_email.grid(row=4, column=1, padx=10, pady=5)
+
+    Label(update_win, text="Photo Path:", font=("Arial", 14)).grid(row=5, column=0, padx=10, pady=5, sticky=E)
+    img = Image.open("./"+user[7])  
+    img = img.resize((400, 250), Image.LANCZOS)
+    img = ImageTk.PhotoImage(img)
+    img_label = Label(update_win, image=img)
+    img_label.image = img  
+    img_label.grid(row=5,column=1)
+
+    # Button frame using grid
+    Button(update_win, text="Update", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", 
+           padx=10, pady=5, command=lambda: update_profile(email)).grid(row=6, column=0, padx=10, pady=20)
+    
+    Button(update_win, text="Cancel", font=("Arial", 12, "bold"), bg="#f44336", fg="white", 
+           padx=10, pady=5, command=update_win.destroy).grid(row=6, column=1, padx=10, pady=20)
 
 
 # Function to reset password
@@ -170,7 +158,6 @@ def reset_pass_window(email):
     entry_password.pack()
     
     Button(pass_window, text="Reset Password", font=("Arial", 12), command=lambda:reset_password(logged_email)).pack(pady=5)
-
 
 # User Dashboard Window
 def open_user_dashboard_window(email):
@@ -206,8 +193,7 @@ def open_user_dashboard_window(email):
     Button(navbar, text="Edit Profile",font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", padx=10, pady=5, command=lambda: update_profile_window(email)).pack(side=LEFT, padx=5, pady=5, ipady=5)
     Button(navbar, text="Change Password", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white",padx=10, pady=5, command=lambda:reset_pass_window(email)).pack(side=LEFT, padx=5, pady=5, ipady=5)
     Button(navbar, text="Logout", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", padx=10, pady=5, command=logout).pack(side=LEFT, padx=5, pady=5, ipady=5)
-    # Start voice listener in background
-    threading.Thread(target=voice_listener, args=(user[2], user[6]), daemon=True).start()
+
     # Body Content
     body = Frame(dashboard, bg="white")
     body.pack(fill=BOTH, expand=True, padx=10, pady=5)
@@ -228,9 +214,9 @@ def login_user():
     email = entry_login_email.get()
     password = entry_login_password.get()
     
-    #if email == "" or password == "":
-       # messagebox.showerror("Error", "All fields are required")
-        #return
+    if email == "" or password == "":
+        messagebox.showerror("Error", "All fields are required")
+        return
     
     try:
         conn = connect_db()
@@ -245,7 +231,6 @@ def login_user():
             messagebox.showinfo("Success", "Login Successful")
             login_window.destroy()
             open_user_dashboard_window(email)
-            #threading.Thread(target=voice_listener, args=(user_name, emergency_email)).start()
 
         else:
             messagebox.showerror("Error", "Invalid email or password")
@@ -255,10 +240,15 @@ def login_user():
 
 #register
 def register_user():
+    global photo_filename
     name = entry_reg_name.get()
     email = entry_reg_email.get()
     mobile = entry_reg_mobile.get()
     password = entry_reg_password.get()
+    emer_mobile = entry_reg_em_mobile.get()
+    emer_email = entry_reg_em_email.get()
+    
+    print("photo :",photo_filename)
     
     if name == "" or password == "" or email =="" or mobile == "":
         messagebox.showerror("Error", "All fields are required")
@@ -267,8 +257,8 @@ def register_user():
     try:
         conn = connect_db()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO safety_users (name, email, mobile, password) VALUES (%s, %s, %s, %s)", 
-                       (name, email, mobile, password))
+        cursor.execute("INSERT INTO safety_users (name, email, mobile,password,emer_mobile,emer_email,photo) VALUES (%s,%s,%s, %s, %s, %s,%s)", 
+                       (name, email, mobile, password,emer_mobile,emer_email,photo_filename))
         conn.commit()
         conn.close()
         messagebox.showinfo("Success", "Registration Successful")
@@ -285,7 +275,7 @@ def show_about():
 
     # Logo
     try:
-        logo_img = Image.open("./login.png").resize((80, 80))
+        logo_img = Image.open("./about.png").resize((80, 80))
         logo_photo = ImageTk.PhotoImage(logo_img)
         Label(about_window, image=logo_photo, bg="#f5f5f5").pack(pady=10)
         # Keep a reference to prevent garbage collection
@@ -315,7 +305,7 @@ def show_contact():
     contact_window.configure(bg="#f5f5f5")
 
     try:
-        logo_img = Image.open("./signup.png").resize((80, 80))
+        logo_img = Image.open("./contact.png").resize((80, 80))
         logo_photo = ImageTk.PhotoImage(logo_img)
         Label(contact_window, image=logo_photo, bg="#f5f5f5").pack(pady=10)
         contact_window.logo_ref = logo_photo
@@ -333,6 +323,7 @@ For feedback, issues, or collaboration, feel free to reach out!
     Label(contact_window, text=contact_text, wraplength=400, justify=LEFT, font=("Arial", 12), bg="#f5f5f5", fg="#555").pack(padx=20, pady=10)
 
 def capture_photo():
+    global photo_filename
     cap = cv2.VideoCapture(0)
     cv2.namedWindow("Capture Photo")
 
@@ -363,7 +354,7 @@ def handle_capture_and_preview():
     photo_path = capture_photo()
     if photo_path:
         img = Image.open(photo_path)
-        img = img.resize((300, 200))
+        img = img.resize((250, 150))
         photo = ImageTk.PhotoImage(img)
 
         captured_image_label.configure(image=photo)
@@ -371,19 +362,19 @@ def handle_capture_and_preview():
 
 
 def open_register_window():
-    global register_window, entry_reg_name, entry_reg_email,entry_reg_mobile,entry_reg_password ,captured_image_label
+    global register_window, entry_reg_name, entry_reg_email,entry_reg_mobile,entry_reg_password ,captured_image_label,entry_reg_em_mobile,entry_reg_em_email
     
     register_window = Toplevel()
-    register_window.geometry("500x700+500+30")
+    register_window.geometry("600x700+500+30")
     register_window.title("Register YourSelf")
     register_window.resizable(False, False)
-    img1 = Image.open("./signup.png")  # Replace with the path to your image
+    img1 = Image.open("./signup.png")
     img1 = img1.resize((50, 50))
     img1 = ImageTk.PhotoImage(img1)
     img_label = Label(register_window, image=img1)
     img_label.image = img1  
-    img_label.place(x=220,y=0)
-    Label(register_window, text="Register", font=("Arial", 20, "bold")).grid(row=0, column=0, columnspan=2, pady=(70,10))
+    img_label.place(x=250,y=0)
+    Label(register_window, text="Signup", font=("Arial", 20, "bold")).grid(row=0, column=0, columnspan=2, pady=(70,10))
     
     Label(register_window, text="Name:", font=("Arial", 18)).grid(row=1, column=0, padx=10, pady=5, sticky=E)
     entry_reg_name = Entry(register_window, font=("Arial", 18), width=25)
@@ -397,31 +388,47 @@ def open_register_window():
     entry_reg_mobile = Entry(register_window, font=("Arial", 18), width=25)
     entry_reg_mobile.grid(row=3, column=1, padx=10, pady=5)
     
-    Label(register_window, text="Password:", font=("Arial", 18)).grid(row=4, column=0, padx=10, pady=5, sticky=E)
-    entry_reg_password = Entry(register_window, font=("Arial", 18), width=25, show="*")
-    entry_reg_password.grid(row=4, column=1, padx=10, pady=5)
+    Label(register_window, text="Emergency Mobile:", font=("Arial", 18)).grid(row=4, column=0, padx=10, pady=5, sticky=E)
+    entry_reg_em_mobile = Entry(register_window, font=("Arial", 18), width=25)
+    entry_reg_em_mobile.grid(row=4, column=1, padx=10, pady=5)
 
-    Label(register_window, text="Photo:", font=("Arial", 18)).grid(row=5, column=0, padx=10, pady=5, sticky=E)
+    
+    Label(register_window, text="Emergency Email:", font=("Arial", 18)).grid(row=5, column=0, padx=10, pady=5, sticky=E)
+    entry_reg_em_email = Entry(register_window, font=("Arial", 18), width=25)
+    entry_reg_em_email.grid(row=5, column=1, padx=10, pady=5)
+    
+    Label(register_window, text="Password:", font=("Arial", 18)).grid(row=6, column=0, padx=10, pady=5, sticky=E)
+    entry_reg_password = Entry(register_window, font=("Arial", 18), width=25, show="*")
+    entry_reg_password.grid(row=6, column=1, padx=10, pady=5)
+
+
+    img = Image.open("./camera.png")
+    img = img.resize((40, 25))
+    img = ImageTk.PhotoImage(img)
+    img_label = Label(register_window, image=img)
+    img_label.image = img  
+   
+    Label(register_window, text="Capture Photo:", font=("Arial", 18)).grid(row=7, column=0, padx=10, pady=5, sticky=E)
     # 📷 Capture Photo Button
     Button(register_window, text="Capture Photo", font=("Arial", 12, "bold"), bg="#2196F3", fg="white",
-           padx=10, pady=5, command=handle_capture_and_preview).grid(row=5, column=1, pady=5, sticky=W)
+           padx=20, pady=5, command=handle_capture_and_preview,image=img).grid(row=7, column=1,padx=5, pady=5, sticky=W)
     # 📸 Frame for preview image
     preview_frame = Frame(register_window)
-    preview_frame.grid(row=6, column=1, padx=10, pady=5, sticky=W)
+    preview_frame.grid(row=7, column=1, padx=5, pady=5, sticky=E)
 
     # 🖼️ Label (no width/height set)
     captured_image_label = Label(preview_frame)
     captured_image_label.pack(padx=5, pady=5)
         
     Button(register_window, text="Sign Up", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", 
-           padx=10, pady=5, command=register_user).grid(row=7, column=1,padx=20, pady=5,sticky=S)
+           padx=10, pady=5, command=register_user).grid(row=8, column=1,padx=20, pady=5,sticky=S)
     
     Button(register_window, text="Reset", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", 
-           padx=10, pady=5, command=reset).grid(row=7, column=1,sticky=E )
+           padx=10, pady=5, command=reset).grid(row=8, column=1,sticky=E )
     
-    Label(register_window, text="Already have an account? :", font=("Arial", 10)).grid(row=8, column=1, pady=15, sticky=S)
+    Label(register_window, text="Already have an account? :", font=("Arial", 10)).grid(row=9, column=1, pady=15, sticky=S)
     link1 = Label(register_window, text="Sign In", font=("Arial", 14),fg="blue",cursor="hand2")
-    link1.grid(row=8, column=1, sticky=E)
+    link1.grid(row=9, column=1, sticky=E)
     link1.bind("<Button-1>", lambda e: open_login_window())
 
 def open_login_window():
