@@ -5,21 +5,90 @@ import mysql.connector
 from datetime import datetime
 import cv2
 import os
+import requests
+import speech_recognition as sr
+import geocoder
+import json
+import threading
+
+# EmailJS credentials
+EMAILJS_SERVICE_ID = "service_fytsm3j"
+EMAILJS_TEMPLATE_ID = "template_wbldyiv"
+EMAILJS_PUBLIC_KEY = "7ciaaJc-pKcWsBg23"
 
 tk = Tk()
-tk.geometry("1200x700+150+50")
+tk.geometry("1200x750+150+10")
 tk.title("SMS")
 tk.configure(bg="white")
 
+#global variable
 photo_filename = None
+
 # db conn
 def connect_db():
-    return mysql.connector.connect(host="localhost", user="root", password="root", database="mca_2025",ssl_disabled=True)
+    return mysql.connector.connect(host="localhost", user="root", password="root", database="mca_2025")
+
+# send email funnction
+def send_email_with_emailjs(from_name, user_email, emer_email, location):
+    url = "https://api.emailjs.com/api/v1.0/email/send"
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "service_id": EMAILJS_SERVICE_ID,
+        "template_id": EMAILJS_TEMPLATE_ID,
+        "user_id": EMAILJS_PUBLIC_KEY,
+        "template_params": {
+            "from_name": from_name,
+            "to_name": user_email,
+            "to_email": emer_email,
+            "message": location
+        }
+    }
+
+    response = requests.post(url, headers=headers, data=json.dumps(payload))
+
+    if response.status_code == 200:
+        print("Email sent successfully via EmailJS.")
+        print(f"name={from_name} , user_email={user_email} , emer_emal={emer_email}")
+    else:
+        print(f"Failed to send email: {response.status_code} - {response.text}")
+        print(f"name={from_name} , user_email={user_email} , emer_emal={emer_email}")
+
+# voice listener function
+def voice_listener(from_name, user_email, emer_email):
+    global listening
+    listening = True
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("🎤 Listening for 'help' or 'logout'...")
+        while listening:
+            try:
+                audio = recognizer.listen(source, timeout=5)
+                text = recognizer.recognize_google(audio).lower()
+                print(f"🎧 Recognized: {text}")
+                if "help" in text:
+                    location = geocoder.ip('me').address
+                    print(f"📍 Detected Location: {location}")
+                    send_email_with_emailjs(from_name, user_email, emer_email, location)
+                elif "logout" in text:
+                    print("🚪 Logging out...")
+                    logout()
+                    break
+            except sr.WaitTimeoutError:
+                continue
+            except Exception as e:
+                print(f"!!Voice recognition error: {e}")
+
 
 # Function to log out
 def logout():
-    messagebox.showinfo("Logout", "You have been logged out successfully")
+    global dashboard,listening
+    listening = False
     dashboard.destroy()
+    messagebox.showinfo("Logout", "You have been logged out successfully")    
+    print("User logged out successfully.")  
 
 # Function to fetch user details
 def fetch_user_details(email):
@@ -161,7 +230,7 @@ def reset_pass_window(email):
 
 # User Dashboard Window
 def open_user_dashboard_window(email):
-    global entry_name, entry_mobile, entry_password, logged_in_email
+    global entry_name, entry_mobile, entry_password, logged_in_email , dashboard
     logged_in_email = email
     
     dashboard = Toplevel()
@@ -231,6 +300,8 @@ def login_user():
             messagebox.showinfo("Success", "Login Successful")
             login_window.destroy()
             open_user_dashboard_window(email)
+            # Start voice listener in background
+            threading.Thread(target=voice_listener, args=(user[1],user[2], user[6]), daemon=True).start()
 
         else:
             messagebox.showerror("Error", "Invalid email or password")
@@ -325,13 +396,13 @@ For feedback, issues, or collaboration, feel free to reach out!
 def capture_photo():
     global photo_filename
     cap = cv2.VideoCapture(0)
-    cv2.namedWindow("Capture Photo")
+    cv2.namedWindow("Capture Photo || Press SPACE to capture or ESC to exit")
 
     photo_filename = None
 
     while True:
         rval, frame = cap.read()
-        cv2.imshow("Capture Photo", frame)
+        cv2.imshow("Capture Photo || Press SPACE to capture or ESC to exit", frame)
 
         key = cv2.waitKey(20)
         if key == 27:  # ESC to cancel
@@ -484,7 +555,7 @@ def header():
 def footer():
     footer = Frame(tk, bg="black", height=100)
     footer.pack(fill=X, side=BOTTOM)
-    Label(footer, text="© 2025 | All Right Reserved | sms.com ", fg="white", bg="black", font=("Arial", 20)).pack()
+    Label(footer, text="© 2025 | All Right Reserved | TrinetraAlert.com ", fg="white", bg="black", font=("Arial", 20)).pack()
 
 
 # home page start here
@@ -496,7 +567,7 @@ navbar_container = Frame(tk, bg="gray", height=50)
 navbar_container.pack(fill=X, pady=5, padx=10)
     
 # Logo on the Left Side
-logo = Label(navbar_container, text="SMS", fg="white", bg="gray", font=("Arial", 20, "bold"))
+logo = Label(navbar_container, text="Trinetra", fg="white", bg="gray", font=("Arial", 20, "bold"))
 logo.pack(side=LEFT, padx=10, pady=5)
     
 # Navbar on the Right Side
@@ -511,15 +582,21 @@ Button(navbar, text="Signup", font=("Arial", 12, "bold"), bg="#4CAF50", fg="whit
     
 # Body Content
 body = Frame(tk, bg="white")
-body.pack(fill=BOTH, expand=True, padx=10, pady=5)
-Label(body, text="Welcome to our Voice Command-Based Safety Management System.", font=("Arial", 18)).pack()
+body.pack(fill=BOTH, expand=True, padx=10, pady=15)
+
+Label(
+    body,
+    text="Welcome to TrinetraAlert — 'The Eye That Never Sleeps'\nVoice Command-Based Safety Management System.",
+    font=("Arial", 18),
+    bg="white"
+).pack()
 
 # image slider
 x=1
 slider_running = True
 slider = None
 slider_label = Label(body)
-slider_label.place(x=150, y=50)
+slider_label.place(x=150, y=70)
 def change_pic():
     global x , slider_label , slider
     if x==5:
@@ -550,10 +627,10 @@ def stop_slider():
         slider = None
 # Start & Stop buttons
 start_btn = Button(body, text="START", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", command=start_slider)
-start_btn.place(x=450, y=500)
+start_btn.place(x=450, y=520)
 
 stop_btn = Button(body, text="STOP", font=("Arial", 12, "bold"), bg="#F44336", fg="white", command=stop_slider)
-stop_btn.place(x=580, y=500)
+stop_btn.place(x=580, y=520)
 
 footer()
 
