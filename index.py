@@ -2,7 +2,7 @@ from tkinter import *
 from tkinter import Frame, Label, Button ,messagebox
 from PIL import Image, ImageTk
 import mysql.connector
-from datetime import datetime
+from datetime import datetime , timedelta
 import cv2
 import os
 import requests
@@ -18,7 +18,7 @@ EMAILJS_PUBLIC_KEY = "7ciaaJc-pKcWsBg23"
 
 tk = Tk()
 tk.geometry("1200x750+150+10")
-tk.title("SMS")
+tk.title("Trinetra")
 tk.configure(bg="white")
 
 #global variable
@@ -55,9 +55,47 @@ def send_email_with_emailjs(from_name, user_email, emer_email, location):
     else:
         print(f"Failed to send email: {response.status_code} - {response.text}")
         print(f"name={from_name} , user_email={user_email} , emer_emal={emer_email}")
+'''
+# send whatsapp message
+def send_whatsapp_message(from_name,emer_mobile , location):
+    delay_seconds=5
+    print(f"⏳ Waiting for {delay_seconds} seconds before sending the message...")
+    
+    time.sleep(delay_seconds)  # Add a delay before sending the message
 
+    # Get the current time
+    now = datetime.now()
+    send_time = now + timedelta(seconds=delay_seconds)  # Add delay seconds to current time
+    hour = send_time.hour
+    minute = send_time.minute
+
+    # Emergency alert message
+    message = f"""
+    Hello Dear,
+
+    This is an urgent emergency notification regarding your friend, {from_name}.
+
+    They have triggered an emergency alert and may be in distress.
+
+    📍 Last known location: {location}
+
+    ⚠️ Please try to reach out to them or provide assistance if possible.
+
+    Every second counts. Your response could make a difference.
+
+    Stay safe,  
+    Emergency Alert System
+    """
+    emer_mobile = "+91"+emer_mobile
+
+    # Send the message at the calculated time
+    kit.sendwhatmsg(emer_mobile, message, hour, minute)
+    print(f"✅ WhatsApp message will be sent at {hour}:{minute}")
+
+'''
+    
 # voice listener function
-def voice_listener(from_name, user_email, emer_email):
+def voice_listener(from_name, user_email, emer_mobile , emer_email):
     global listening
     listening = True
     recognizer = sr.Recognizer()
@@ -71,6 +109,7 @@ def voice_listener(from_name, user_email, emer_email):
                 if "help" in text:
                     location = geocoder.ip('me').address
                     print(f"📍 Detected Location: {location}")
+                    #send_whatsapp_message(from_name,emer_mobile , location) 
                     send_email_with_emailjs(from_name, user_email, emer_email, location)
                 elif "logout" in text:
                     print("🚪 Logging out...")
@@ -301,7 +340,7 @@ def login_user():
             login_window.destroy()
             open_user_dashboard_window(email)
             # Start voice listener in background
-            threading.Thread(target=voice_listener, args=(user[1],user[2], user[6]), daemon=True).start()
+            threading.Thread(target=voice_listener, args=(user[1],user[2],user[3], user[6]), daemon=True).start()
 
         else:
             messagebox.showerror("Error", "Invalid email or password")
